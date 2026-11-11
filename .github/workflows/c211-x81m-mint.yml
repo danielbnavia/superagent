@@ -59,3 +59,5 @@ jobs:
                         'err':None if tok else (b[:400])})
           emit({'kind':'done','utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())})
           PY
+
+# mint-trigger 2026-11-11T22:00:32Z intent-i80230
